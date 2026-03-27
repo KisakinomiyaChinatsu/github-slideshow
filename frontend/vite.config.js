@@ -11,6 +11,6 @@ export default defineConfig({
         changeOrigin: true
       }
     },
-    allowedHosts: ['.monkeycode-ai.online']
+    allowedHosts: true
   }
 })

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel 管理平台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; }
+        .layout { display: flex; height: 100vh; }
+        .sidebar { width: 260px; background: #2c3e50; color: #ecf0f1; display: flex; flex-direction: column; }
+        .logo { padding: 20px; font-size: 20px; font-weight: bold; border-bottom: 1px solid #34495e; }
+        .nav { flex: 1; overflow-y: auto; padding: 10px 0; }
+        .nav-item { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s; }
+        .nav-item:hover { background: #34495e; }
+        .nav-item.active { background: #3498db; }
+        .nav-item .icon { font-size: 18px; }
+        .add-module { padding: 15px 20px; border-top: 1px solid #34495e; }
+        .add-module button { width: 100%; padding: 10px; background: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .add-module button:hover { background: #219a52; }
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .header { background: white; padding: 15px 25px; border-bottom: 1px solid #e1e8ed; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 18px; color: #2c3e50; }
+        .header-actions { display: flex; gap: 10px; }
+        .header-actions button { padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .header-actions button:hover { background: #f5f7fa; }
+        .header-actions button.primary { background: #3498db; color: white; border: none; }
+        .header-actions button.primary:hover { background: #2980b9; }
+        .content { flex: 1; padding: 20px; overflow: auto; }
+        .spreadsheet-container { background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); height: 100%; display: flex; flex-direction: column; }
+        .sheet-tabs { display: flex; gap: 5px; padding: 15px; border-bottom: 1px solid #e1e8ed; }
+        .sheet-tab { padding: 8px 16px; background: #ecf0f1; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .sheet-tab:hover { background: #d5dbdb; }
+        .sheet-tab.active { background: #3498db; color: white; }
+        .add-sheet { padding: 8px 12px; background: transparent; border: 1px dashed #bdc3c7; border-radius: 6px; cursor: pointer; font-size: 13px; color: #7f8c8d; }
+        .add-sheet:hover { border-color: #3498db; color: #3498db; }
+        .table-wrapper { flex: 1; overflow: auto; padding: 15px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { border: 1px solid #e1e8ed; padding: 10px 12px; text-align: left; }
+        th { background: #f8f9fa; font-weight: 600; color: #2c3e50; position: sticky; top: 0; }
+        td { background: white; }
+        td:focus { outline: 2px solid #3498db; outline-offset: -2px; }
+        .cell-input { width: 100%; border: none; padding: 0; margin: 0; font-size: 14px; font-family: inherit; }
+        .welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #7f8c8d; }
+        .welcome h2 { font-size: 24px; margin-bottom: 10px; color: #2c3e50; }
+        .welcome p { font-size: 16px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; }
+        .modal.show { display: flex; }
+        .modal-content { background: white; padding: 25px; border-radius: 10px; width: 400px; max-width: 90%; }
+        .modal-content h3 { margin-bottom: 20px; color: #2c3e50; }
+        .modal-content input { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-actions button { padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .modal-actions .cancel { background: #ecf0f1; border: none; }
+        .modal-actions .confirm { background: #3498db; color: white; border: none; }
+        .context-menu { position: fixed; background: white; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); z-index: 1000; display: none; }
+        .context-menu.show { display: block; }
+        .context-menu-item { padding: 10px 20px; cursor: pointer; font-size: 14px; }
+        .context-menu-item:hover { background: #f5f7fa; }
+        .context-menu-item.danger { color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <div class="sidebar">
+            <div class="logo">Excel 管理平台</div>
+            <div class="nav" id="nav"></div>
+            <div class="add-module">
+                <button onclick="showCreateFileModal()">+ 新建 Excel</button>
+            </div>
+        </div>
+        <div class="main">
+            <div class="header">
+                <h1 id="currentTitle">选择或创建一个 Excel 文件</h1>
+                <div class="header-actions" id="headerActions" style="display: none;">
+                    <button onclick="addRow()">+ 添加行</button>
+                    <button onclick="addColumn()">+ 添加列</button>
+                    <button class="primary" onclick="saveData()">保存</button>
+                    <button onclick="downloadCurrentFile()">下载</button>
+                    <button class="danger" onclick="deleteCurrentFile()">删除</button>
+                </div>
+            </div>
+            <div class="content" id="content">
+                <div class="welcome">
+                    <h2>欢迎使用 Excel 管理平台</h2>
+                    <p>从左侧边栏选择或创建一个 Excel 文件开始</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="createModal">
+        <div class="modal-content">
+            <h3>新建 Excel 文件</h3>
+            <input type="text" id="newFileName" placeholder="输入文件名">
+            <div class="modal-actions">
+                <button class="cancel" onclick="hideModal()">取消</button>
+                <button class="confirm" onclick="createFile()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="createSheetModal">
+        <div class="modal-content">
+            <h3>新建工作表</h3>
+            <input type="text" id="newSheetName" placeholder="输入工作表名称">
+            <div class="modal-actions">
+                <button class="cancel" onclick="hideSheetModal()">取消</button>
+                <button class="confirm" onclick="createSheet()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="insertRowAbove()">上方插入行</div>
+        <div class="context-menu-item" onclick="insertRowBelow()">下方插入行</div>
+        <div class="context-menu-item" onclick="insertColumnLeft()">左侧插入列</div>
+        <div class="context-menu-item" onclick="insertColumnRight()">右侧插入列</div>
+        <div class="context-menu-item danger" onclick="deleteRow()">删除行</div>
+        <div class="context-menu-item danger" onclick="deleteColumn()">删除列</div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let files = [];
+        let currentFile = null;
+        let currentSheet = null;
+        let sheetData = [];
+        let contextRow = null;
+        let contextCol = null;
+
+        async function loadFiles() {
+            const res = await fetch(`${API_BASE}/files`);
+            files = await res.json();
+            renderNav();
+        }
+
+        function renderNav() {
+            const nav = document.getElementById('nav');
+            nav.innerHTML = files.map(f => `
+                <div class="nav-item ${currentFile === f.name ? 'active' : ''}" onclick="openFile('${f.name}')">
+                    <span class="icon">📊</span>
+                    <span>${f.name.replace('.xlsx', '')}</span>
+                </div>
+            `).join('');
+        }
+
+        async function openFile(name) {
+            currentFile = name;
+            renderNav();
+            document.getElementById('headerActions').style.display = 'flex';
+            document.getElementById('currentTitle').textContent = name.replace('.xlsx', '');
+
+            const res = await fetch(`${API_BASE}/files/${name}`);
+            const info = await res.json();
+            currentSheet = info.activeSheet || info.sheets[0];
+            await loadSheet(currentSheet);
+        }
+
+        async function loadSheet(sheetName) {
+            if (!currentFile) return;
+            const res = await fetch(`${API_BASE}/files/${currentFile}/sheets/${sheetName}`);
+            const info = await res.json();
+            sheetData = info.data || [];
+            currentSheet = sheetName;
+            renderSpreadsheet();
+        }
+
+        function renderSpreadsheet() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="spreadsheet-container">
+                    <div class="sheet-tabs" id="sheetTabs"></div>
+                    <div class="table-wrapper">
+                        <table id="table"></table>
+                    </div>
+                </div>
+            `;
+            renderSheetTabs();
+            renderTable();
+            document.addEventListener('click', hideContextMenu);
+        }
+
+        async function renderSheetTabs() {
+            const res = await fetch(`${API_BASE}/files/${currentFile}`);
+            const info = await res.json();
+            const tabs = document.getElementById('sheetTabs');
+            tabs.innerHTML = info.sheets.map(s => `
+                <div class="sheet-tab ${s === currentSheet ? 'active' : ''}" onclick="loadSheet('${s}')">${s}</div>
+            `).join('') + `<div class="add-sheet" onclick="showSheetModal()">+ 工作表</div>`;
+        }
+
+        function renderTable() {
+            const table = document.getElementById('table');
+            if (sheetData.length === 0) {
+                table.innerHTML = '<tr><td style="text-align:center;color:#999;padding:40px;">空表格，点击添加数据</td></tr>';
+                return;
+            }
+            const maxCols = Math.max(...sheetData.map(r => r.length));
+            let html = '<tr><th style="width:50px;">#</th>';
+            for (let c = 0; c < maxCols; c++) {
+                html += `<th>${String.fromCharCode(65 + c)}</th>`;
+            }
+            html += '</tr>';
+            sheetData.forEach((row, r) => {
+                html += `<tr><td>${r + 1}</td>`;
+                for (let c = 0; c < maxCols; c++) {
+                    const val = row[c] !== undefined ? row[c] : '';
+                    html += `<td contenteditable="true" data-row="${r}" data-col="${c}" onblur="editCell(this)">${val}</td>`;
+                }
+                html += '</tr>';
+            });
+            table.innerHTML = html;
+            table.addEventListener('contextmenu', showContextMenu);
+        }
+
+        function editCell(td) {
+            const row = parseInt(td.dataset.row);
+            const col = parseInt(td.dataset.col);
+            if (!sheetData[row]) sheetData[row] = [];
+            sheetData[row][col] = td.textContent;
+        }
+
+        function showContextMenu(e) {
+            e.preventDefault();
+            const menu = document.getElementById('contextMenu');
+            const row = e.target.dataset.row;
+            const col = e.target.dataset.col;
+            if (row !== undefined && col !== undefined) {
+                contextRow = parseInt(row);
+                contextCol = parseInt(col);
+                menu.style.left = e.pageX + 'px';
+                menu.style.top = e.pageY + 'px';
+                menu.classList.add('show');
+            }
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').classList.remove('show');
+        }
+
+        function insertRowAbove() {
+            sheetData.splice(contextRow, 0, []);
+            renderTable();
+        }
+
+        function insertRowBelow() {
+            sheetData.splice(contextRow + 1, 0, []);
+            renderTable();
+        }
+
+        function insertColumnLeft() {
+            sheetData.forEach(row => row.splice(contextCol, 0, ''));
+            renderTable();
+        }
+
+        function insertColumnRight() {
+            sheetData.forEach(row => row.splice(contextCol + 1, 0, ''));
+            renderTable();
+        }
+
+        function deleteRow() {
+            if (sheetData.length > 1) {
+                sheetData.splice(contextRow, 1);
+                renderTable();
+            }
+        }
+
+        function deleteColumn() {
+            const maxCols = Math.max(...sheetData.map(r => r.length));
+            if (maxCols > 1) {
+                sheetData.forEach(row => row.splice(contextCol, 1));
+                renderTable();
+            }
+        }
+
+        function addRow() {
+            sheetData.push([]);
+            renderTable();
+        }
+
+        function addColumn() {
+            sheetData.forEach(row => row.push(''));
+            renderTable();
+        }
+
+        async function saveData() {
+            if (!currentFile || !currentSheet) return;
+            await fetch(`${API_BASE}/files/${currentFile}/sheets/${currentSheet}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: sheetData })
+            });
+            alert('保存成功');
+        }
+
+        async function downloadCurrentFile() {
+            if (!currentFile) return;
+            window.location.href = `${API_BASE}/files/${currentFile}/download`;
+        }
+
+        async function deleteCurrentFile() {
+            if (!currentFile) return;
+            if (!confirm(`确定要删除 ${currentFile} 吗？`)) return;
+            await fetch(`${API_BASE}/files/${currentFile}`, { method: 'DELETE' });
+            currentFile = null;
+            currentSheet = null;
+            sheetData = [];
+            document.getElementById('headerActions').style.display = 'none';
+            document.getElementById('currentTitle').textContent = '选择或创建一个 Excel 文件';
+            document.getElementById('content').innerHTML = `
+                <div class="welcome">
+                    <h2>欢迎使用 Excel 管理平台</h2>
+                    <p>从左侧边栏选择或创建一个 Excel 文件开始</p>
+                </div>
+            `;
+            loadFiles();
+        }
+
+        function showCreateFileModal() {
+            document.getElementById('createModal').classList.add('show');
+            document.getElementById('newFileName').value = '';
+            document.getElementById('newFileName').focus();
+        }
+
+        function hideModal() {
+            document.getElementById('createModal').classList.remove('show');
+        }
+
+        function showSheetModal() {
+            document.getElementById('createSheetModal').classList.add('show');
+            document.getElementById('newSheetName').value = '';
+            document.getElementById('newSheetName').focus();
+        }
+
+        function hideSheetModal() {
+            document.getElementById('createSheetModal').classList.remove('show');
+        }
+
+        async function createFile() {
+            const name = document.getElementById('newFileName').value.trim();
+            if (!name) return;
+            const fileName = name.endsWith('.xlsx') ? name : name + '.xlsx';
+            await fetch(`${API_BASE}/files`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: fileName })
+            });
+            hideModal();
+            loadFiles();
+        }
+
+        async function createSheet() {
+            const name = document.getElementById('newSheetName').value.trim();
+            if (!name || !currentFile) return;
+            await fetch(`${API_BASE}/files/${currentFile}/sheets`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            hideSheetModal();
+            loadSheet(name);
+            loadFiles();
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                hideModal();
+                hideSheetModal();
+            }
+        });
+
+        loadFiles();
+    </script>
+</body>
+</html>
